@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { mkdir, writeFile, access } from "node:fs/promises"
+import { mkdir, writeFile, access, readFile, appendFile } from "node:fs/promises"
 import { spawn } from "node:child_process"
 
 const EXAMPLE_TEST = `import { expect, test } from "bun:test"                                                             
@@ -21,7 +21,7 @@ const PRELOAD_FILE = `import "bun-match-svg"`
 const BUNFIG = `[test]
 preload = ["./tests/fixtures/preload.ts"]`
 
-async function installDependency() {
+export async function installDependency() {
   return new Promise((resolve, reject) => {
     const install = spawn('bun', ['add', '-d', 'bun-match-svg'], {
       stdio: 'inherit'
@@ -37,7 +37,7 @@ async function installDependency() {
   })
 }
 
-async function fileExists(path: string): Promise<boolean> {
+export async function fileExists(path: string): Promise<boolean> {
   try {
     await access(path)
     return true
@@ -46,7 +46,7 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
-async function init() {
+export async function init() {
   try {
     console.log("📦 Installing bun-match-svg...")
     await installDependency()
@@ -71,7 +71,20 @@ async function init() {
       await writeFile("bunfig.toml", BUNFIG)
       console.log("✅ Created bunfig.toml")
     } else {
-      console.log("🔒 bunfig.toml already exists, skipping.")
+      const bunfigContent = await readFile("bunfig.toml", "utf-8")
+      if (bunfigContent.includes('preload = ["./tests/fixtures/preload.ts"]')) {
+        console.log("🔒 bunfig.toml already has preload configuration, skipping.")
+      } else if (bunfigContent.match(/^\s*\[test\]\s*$/m)) {
+        const updatedContent = bunfigContent.replace(
+          /(^\s*\[test\]\s*$)/m,
+          `$1\npreload = ["./tests/fixtures/preload.ts"]`,
+        )
+        await writeFile("bunfig.toml", updatedContent)
+        console.log("✅ Updated bunfig.toml with preload configuration.")
+      } else {
+        await appendFile("bunfig.toml", `\n\n${BUNFIG}`)
+        console.log("✅ Added preload configuration to bunfig.toml.")
+      }
     }
 
     console.log("\n🎉 You can now run: bun test")
